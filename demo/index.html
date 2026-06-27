@@ -25,6 +25,7 @@ h2{font-size:1rem;color:#737373;text-transform:uppercase;letter-spacing:.08em;ma
      padding:.4rem .9rem;border-radius:4px;cursor:pointer;transition:border-color .15s}
 .btn:hover{border-color:#555} .btn.on{border-color:#22c55e;color:#22c55e}
 canvas{display:block;width:100%;height:160px;border:1px solid #262626;border-radius:6px;background:#0d0d0d}
+.caption{font-size:.78rem;color:#737373;margin-top:.6rem;line-height:1.45}
 .banner{margin-top:.9rem;border:1px solid #262626;border-radius:6px;padding:.75rem 1.2rem;transition:color .3s,border-color .3s}
 .banner .blbl{font-size:.72rem;color:#737373;margin-bottom:.2rem}
 .banner .bwin{font-weight:700;font-size:1.1rem}
@@ -59,9 +60,10 @@ footer{border-top:1px solid #262626;padding-top:1.2rem;font-size:.82rem;color:#7
       <button class="btn" id="btnRP">replay</button>
     </div>
     <canvas id="sim"></canvas>
-    <div class="banner ok" id="banner">
+    <p class="caption">Watermarking lets event-time windowing wait for late bids and place them by when they happened; naive processing-time windowing drops Cy&rsquo;s late bid into the next window.</p>
+    <div class="banner" id="banner">
       <div class="blbl">Charizard final [0&ndash;10s] winner</div>
-      <div class="bwin" id="bwin">Cy &mdash; $150.00</div>
+      <div class="bwin" id="bwin">Charizard final &mdash; collecting bids&hellip;</div>
     </div>
   </section>
 
@@ -73,19 +75,20 @@ footer{border-top:1px solid #262626;padding-top:1.2rem;font-size:.82rem;color:#7
 <script>
 (function(){
   "use strict";
+  // Bids: event_times 0,2,4,5. Cy (index 2, et=4) arrives LATE at wall-clock ~11s.
   const BIDS=[{name:"Ana",amt:100,et:0},{name:"Bo",amt:120,et:2},{name:"Cy",amt:150,et:4},{name:"Bo",amt:140,et:5}];
-  const CY=2, CY_PT=11, WM_LAG=5, AXIS=20, WIN=10, FPS=60;
+  const CY=2, CY_PT=11, AXIS=20, WIN=10, FPS=60, SPEED=3; // 1 real sec = 3 sim sec → 20s in ~6.67s
   const COLORS={Ana:"#60a5fa",Bo:"#f59e0b",Cy:"#22c55e"};
   const cv=document.getElementById("sim"), cx=cv.getContext("2d");
   const btnWM=document.getElementById("btnWM"), btnRP=document.getElementById("btnRP");
   const banner=document.getElementById("banner"), bwin=document.getElementById("bwin");
-  let wmOn=true, frame=0, raf=null;
+  let wmOn=true, frame=0, raf=null, loopTimer=null;
 
   function dpr(){return window.devicePixelRatio||1}
   function W(){return cv.clientWidth} function H(){return cv.clientHeight}
   function resize(){const r=dpr();cv.width=W()*r;cv.height=H()*r;cx.scale(r,r)}
   function xOf(s){return 48+(s/AXIS)*(W()-64)}
-  function pt(){return frame/FPS}
+  function simT(){return (frame/FPS)*SPEED} // wall-clock "now" in simulated seconds
 
   function setWinner(txt,ok){
     bwin.textContent=txt;
@@ -93,46 +96,53 @@ footer{border-top:1px solid #262626;padding-top:1.2rem;font-size:.82rem;color:#7
   }
 
   function draw(){
-    const w=W(),h=H(),axY=h-36,t=pt();
+    const w=W(),h=H(),axY=h-36,t=simT();
     cx.clearRect(0,0,w,h);
 
-    /* axis */
+    /* x-axis */
     cx.strokeStyle="#262626";cx.lineWidth=1;
     cx.beginPath();cx.moveTo(xOf(0),axY);cx.lineTo(xOf(AXIS),axY);cx.stroke();
-    cx.fillStyle="#737373";cx.textAlign="center";
     cx.font='10px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
     for(let s=0;s<=AXIS;s+=5){
       const x=xOf(s);
-      cx.strokeStyle="#333";cx.beginPath();cx.moveTo(x,axY-4);cx.lineTo(x,axY+4);cx.stroke();
-      cx.fillStyle="#737373";cx.fillText(s+"s",x,axY+15);
+      cx.strokeStyle="#333";cx.lineWidth=1;
+      cx.beginPath();cx.moveTo(x,axY-4);cx.lineTo(x,axY+4);cx.stroke();
+      cx.fillStyle="#737373";cx.textAlign="center";cx.fillText(s+"s",x,axY+15);
     }
     cx.fillStyle="#555";cx.textAlign="left";cx.font='9px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
-    cx.fillText("processing time →",xOf(0),axY+28);
+    cx.fillText("time (seconds) →",xOf(0),axY+28);
 
-    /* window boundary */
+    /* fixed dashed window [0-10s] boundary */
     const wx=xOf(WIN);
     cx.strokeStyle="#334155";cx.setLineDash([4,4]);cx.lineWidth=1;
     cx.beginPath();cx.moveTo(wx,24);cx.lineTo(wx,axY);cx.stroke();cx.setLineDash([]);
     cx.fillStyle="#475569";cx.textAlign="center";cx.font='9px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
-    cx.fillText("window boundary",wx,18);
+    cx.fillText("window [0–10s] boundary",wx,18);
 
-    /* watermark */
-    let maxET=0;
-    BIDS.forEach((b,i)=>{if(i===CY&&t<CY_PT)return;if(t>=b.et)maxET=Math.max(maxET,b.et);});
-    const wm=Math.max(0,maxET-WM_LAG), wmX=xOf(wm);
-    if(t>0.5){
-      cx.strokeStyle="#22c55e";cx.lineWidth=1.5;cx.setLineDash([3,3]);
-      cx.beginPath();cx.moveTo(wmX,26);cx.lineTo(wmX,axY-2);cx.stroke();cx.setLineDash([]);
-      cx.fillStyle="#22c55e";cx.textAlign="center";cx.font='9px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
-      cx.fillText("wm",wmX,21);
+    /* advancing "now" line — wall-clock / processing time */
+    const nowX=xOf(Math.min(t,AXIS));
+    cx.strokeStyle="#e5e5e5";cx.lineWidth=1;cx.globalAlpha=0.3;
+    cx.beginPath();cx.moveTo(nowX,26);cx.lineTo(nowX,axY-2);cx.stroke();
+    cx.globalAlpha=1;
+    if(t<AXIS-0.3){
+      cx.fillStyle="#888";cx.textAlign="center";cx.font='8px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
+      cx.fillText("now",nowX,22);
     }
 
-    /* bids */
+    /* bid dots */
     BIDS.forEach((b,i)=>{
-      let appearPT,dx;
-      if(i===CY){if(t<CY_PT)return;dx=wmOn?xOf(b.et):xOf(12);appearPT=CY_PT;}
-      else{if(t<b.et)return;dx=xOf(b.et);appearPT=b.et;}
-      const alpha=Math.min(1,(t-appearPT)/0.4);
+      let appearAt,dx;
+      if(i===CY){
+        if(t<CY_PT) return;               // hidden until Cy's phone delivers the bid
+        // WM ON:  place at event-time 4s (inside [0-10s] window)
+        // WM OFF: place at arrival time 11s (shunted into [10-20s] region)
+        dx=wmOn?xOf(b.et):xOf(CY_PT);
+        appearAt=CY_PT;
+      } else {
+        if(t<b.et) return;
+        dx=xOf(b.et); appearAt=b.et;
+      }
+      const alpha=Math.min(1,(t-appearAt)/0.4);
       cx.globalAlpha=alpha;
       cx.beginPath();cx.arc(dx,axY-18,7,0,Math.PI*2);cx.fillStyle=COLORS[b.name]||"#e5e5e5";cx.fill();
       cx.fillStyle="#e5e5e5";cx.textAlign="center";
@@ -142,16 +152,41 @@ footer{border-top:1px solid #262626;padding-top:1.2rem;font-size:.82rem;color:#7
       cx.globalAlpha=1;
     });
 
-    /* winner */
-    const wmClosed=wm>=WIN;
-    if(wmOn){setWinner(wmClosed?"Cy — $150.00":"(window open…)",wmClosed?true:null);}
-    else{setWinner(t>=WIN?"Bo — $140.00":"(window open…)",t>=WIN?false:null);}
+    /* winner banner — resolves the moment Cy's late bid arrives at t=11s */
+    if(t<CY_PT){
+      setWinner("Charizard final — collecting bids…",null);
+    } else if(wmOn){
+      // WM ON: event-time windowing places Cy (et=4s) inside [0-10s] → Cy wins
+      setWinner("Cy — $150.00",true);
+    } else {
+      // WM OFF: processing-time windowing places Cy (pt=11s) in [10-20s] → Bo wins [0-10s]
+      setWinner("Bo — $140.00",false);
+    }
   }
 
-  function tick(){resize();draw();frame++;if(frame<=AXIS*FPS)raf=requestAnimationFrame(tick);}
-  function start(){if(raf)cancelAnimationFrame(raf);frame=0;setWinner("(starting…)",null);raf=requestAnimationFrame(tick);}
+  // 20 sim-seconds at SPEED=3 → 400 frames → ~6.67 real seconds
+  const TOTAL_FRAMES=Math.ceil(AXIS/SPEED*FPS);
 
-  btnWM.addEventListener("click",()=>{wmOn=!wmOn;btnWM.textContent="watermarking: "+(wmOn?"ON":"OFF");btnWM.classList.toggle("on",wmOn);start();});
+  function tick(){
+    resize();draw();frame++;
+    if(frame<=TOTAL_FRAMES){raf=requestAnimationFrame(tick);}
+    else{loopTimer=setTimeout(start,1500);} // auto-loop after 1.5s pause
+  }
+
+  function start(){
+    if(raf){cancelAnimationFrame(raf);raf=null;}
+    if(loopTimer){clearTimeout(loopTimer);loopTimer=null;}
+    frame=0;
+    setWinner("Charizard final — collecting bids…",null);
+    raf=requestAnimationFrame(tick);
+  }
+
+  btnWM.addEventListener("click",()=>{
+    wmOn=!wmOn;
+    btnWM.textContent="watermarking: "+(wmOn?"ON":"OFF");
+    btnWM.classList.toggle("on",wmOn);
+    start();
+  });
   btnRP.addEventListener("click",start);
   window.addEventListener("resize",()=>{resize();draw();});
   resize();start();
