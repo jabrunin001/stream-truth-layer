@@ -1,7 +1,7 @@
 # stream-truth-layer — Design Spec
 
 **Date:** 2026-06-27
-**Target role:** Whatnot — Software Engineer, Data Platform (streaming / Flink platform)
+**Target role:** Software Engineer, Data Platform (streaming / Flink platform)
 **Repo:** `~/Desktop/stream-truth-layer` → public on `jabrunin001`
 
 ## 1. Purpose

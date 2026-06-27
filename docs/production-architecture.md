@@ -121,13 +121,13 @@ This block is documentation only. It is not tested, not applied, and not complet
 # --------------------------------------------------------------------------
 
 resource "aws_kinesis_stream" "bid_events" {
-  name             = "whatnot-bid-events"
+  name             = "livestream-bid-events"
   shard_count      = 64   # one shard per ~1 MB/s; size to peak show volume
   retention_period = 24   # hours; must exceed max recovery window
 }
 
 resource "aws_s3_bucket" "flink_checkpoints" {
-  bucket = "whatnot-flink-checkpoints-${var.env}"
+  bucket = "livestream-flink-checkpoints-${var.env}"
 
   lifecycle_rule {
     id      = "expire-old-checkpoints"
@@ -153,13 +153,13 @@ resource "kubectl_manifest" "stream_truth_layer_job" {
       name: stream-truth-layer
       namespace: flink-jobs
     spec:
-      image: whatnot/stream-truth-layer:${var.image_tag}
+      image: registry.example.com/stream-truth-layer:${var.image_tag}
       flinkVersion: v1_18
       flinkConfiguration:
         taskmanager.numberOfTaskSlots: "4"
         state.backend: rocksdb
         state.backend.incremental: "true"
-        state.checkpoints.dir: s3://whatnot-flink-checkpoints-${var.env}/stream-truth-layer
+        state.checkpoints.dir: s3://livestream-flink-checkpoints-${var.env}/stream-truth-layer
         execution.checkpointing.interval: "30000"
         execution.checkpointing.mode: EXACTLY_ONCE
       jobManager:

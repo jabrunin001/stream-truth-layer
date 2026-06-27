@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a pure-Python "mini-Flink" streaming engine for Whatnot live auctions whose hero control proves that event-time windowing with watermarks + allowed lateness reconciles to a batch oracle while a naive processing-time pipeline silently crowns the wrong auction winner.
+**Goal:** Build a pure-Python "mini-Flink" streaming engine for live-stream auctions whose hero control proves that event-time windowing with watermarks + allowed lateness reconciles to a batch oracle while a naive processing-time pipeline silently crowns the wrong auction winner.
 
 **Architecture:** Small, single-purpose engine units (`event`, `source`, `watermark`, `state`, `window`, `sink`, `metrics`, `checkpoint`) composed into three pipelines (naive / event-time / batch-oracle). A `reconcile` driver asserts `event_time == batch` and `naive != batch`; a `recovery` driver proves exactly-once after a simulated crash. A Typer CLI exposes everything; CI asserts the exact numbers; a hand-built demo page ships on GitHub Pages.
 
@@ -71,7 +71,7 @@ README.md
 [project]
 name = "stream-truth-layer"
 version = "0.1.0"
-description = "A pure-Python mini-Flink streaming engine for Whatnot live auctions"
+description = "A pure-Python mini-Flink streaming engine for live-stream auctions"
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2.5", "typer>=0.12", "duckdb>=0.10"]
 
@@ -1402,7 +1402,7 @@ jobs:
 This is a **hand-built** vanilla HTML/CSS/JS page (no build step, no frameworks). Do NOT regenerate it from a tool later. Dark-OLED aesthetic consistent with the rest of the portfolio: background `#0a0a0a`, truth/correct green `#22c55e`, bug/dropped red `#ef4444`, monospace UI font.
 
 **Required content/structure:**
-- Header: title "stream-truth-layer", one-line tagline "Event-time truth for Whatnot live auctions — watermarks, checkpoints, exactly-once."
+- Header: title "stream-truth-layer", one-line tagline "Event-time truth for live-stream auctions — watermarks, checkpoints, exactly-once."
 - A "The bug" section stating the hero: naive processing-time windowing crowns **Bo @ $140.00**; event-time + 5s watermark crowns **Cy @ $150.00**, matching the batch oracle.
 - An **animated late-event simulator** (vanilla JS, `requestAnimationFrame` or `setInterval`): a horizontal time axis 0–20s; four bid markers for Show #42 (Ana 0s, Bo 2s, Cy 4s, Bo 5s) where Cy's marker travels in late (arrives near x=11s); a vertical **watermark line** that advances; a toggle button "watermarking: on/off" that flips the declared winner between **Cy $150.00** (on) and **Bo $140.00** (off). Keep it under ~200 lines, all inline.
 - A footer linking the GitHub repo and the generated `observe.html` (`<a href="./observe.html">per-tenant SLOs →</a>`).

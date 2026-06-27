@@ -1,7 +1,7 @@
 [project]
 name = "stream-truth-layer"
 version = "0.1.0"
-description = "A pure-Python mini-Flink streaming engine for Whatnot live auctions"
+description = "A pure-Python mini-Flink streaming engine for live-stream auctions"
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2.5", "typer>=0.12", "duckdb>=0.10"]
 

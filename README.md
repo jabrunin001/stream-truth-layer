@@ -1,6 +1,6 @@
 # stream-truth-layer
 
-A pure-Python mini-Flink streaming engine for Whatnot live auctions. It implements the platform layer itself — watermarking, keyed state, tumbling windows, exactly-once via idempotent sink + checkpointing, and per-tenant SLOs — not a pipeline built on top of an existing platform. The hero control is a reconciliation gate that proves event-time processing produces the correct auction winner where naive (processing-time) processing silently gets it wrong.
+A pure-Python mini-Flink streaming engine for live-stream auctions. It implements the platform layer itself — watermarking, keyed state, tumbling windows, exactly-once via idempotent sink + checkpointing, and per-tenant SLOs — not a pipeline built on top of an existing platform. The hero control is a reconciliation gate that proves event-time processing produces the correct auction winner where naive (processing-time) processing silently gets it wrong.
 
 ---
 
