@@ -43,24 +43,27 @@ Window: 10 s tumbling. Watermark out-of-orderness bound: 5 s. Allowed lateness: 
 
 | bidder | amount     | event_time | arrival    | note                                     |
 |--------|------------|------------|------------|------------------------------------------|
-| Ana    | $100.00    | 0 s        | 0 s        | on time                                  |
-| Bo     | $120.00    | 2 s        | 2 s        | on time                                  |
+| Ana    | $100.00    | 0 s        | ~0 s       | on time                                  |
+| Bo     | $120.00    | 2 s        | ~2 s       | on time                                  |
 | Cy     | **$150.00**| 4 s        | ~11 s      | laggy phone — arrives after window looks closed |
-| Bo     | $140.00    | 5 s        | 5 s        | on time                                  |
+| Bo     | $140.00    | 5 s        | ~5 s       | on time                                  |
 
-**Naive (processing-time):** Cy's $150 bid arrives at ~11 s — after the 10 s window boundary — so it never lands in the window by arrival time. Naive crowns **Bo @ $140.00**. GMV is undercounted. The job still exits green.
+**Naive (processing-time):** The naive pipeline windows by arrival/ingest time. Cy arrives at ingest ~11 s, so naive buckets Cy into window [10–20s]. The [0–10s] window closes with Bo as the winner at $140.00. GMV is undercounted. The job still exits green.
 
-**Event-time + 5 s watermark:** Cy's bid carries `event_time = 4 s`. The watermark fires the window only when `max_event_time_seen - 5 >= 10`, so Cy's bid lands within `window_end + allowed_lateness` and triggers a late firing. Winner: **Cy @ $150.00** — matching the batch oracle.
+**Event-time + 5 s watermark:** Cy's bid carries `event_time = 4 s`, so event-time windowing assigns it to window [0–10s] regardless of when it arrives. When Cy is processed (ingest ~11 s), show #42's watermark is `max(0, 2, 5) − 5 = 0`, far below the window end (10 s), so the engine classifies Cy as `on_time` — the `late_allowed` counter for show #42 stays at 0. The window result is emitted at end-of-stream via `results()`. Winner: **Cy @ $150.00** — matching the batch oracle.
+
+The 5 s allowed-lateness budget governs how long window state is retained for late-arriving data (demonstrated by show #99's drop below), not what allows Cy's bid through.
 
 ```
 event-time matches oracle: True
-DIVERGENCE 42|0.0: naive=Bo $140.00  oracle=Cy $150.00
-SLO DROP show #99: 1 bid(s) beyond allowed lateness (excluded from parity, surfaced in observe)
+  DIVERGENCE 42|0: naive=Bo $140.00  oracle=Cy $150.00
+  DIVERGENCE 99|0: naive=Fi $80.00  oracle=Hal $90.00
+  SLO DROP show #99: 1 bid(s) beyond allowed lateness (excluded from parity, surfaced in observe)
 ```
 
 This assertion runs in CI on every push.
 
-**Show #99** intentionally contains a bid that arrives beyond the allowed lateness window. That bid routes to the late side output and is counted under `late_drops` — an SLO signal, not a parity failure.
+**Show #99** diverges on two dimensions. First, the naive divergence: naive processing-time bucketing puts Fi's $80.00 bid (arrives early at ingest ~5 s) as the [0–10s] winner, while the batch oracle correctly includes Hal's $90.00 bid (event_time 6 s, arrives late at ingest 24 s) in [0–10s], making Hal the oracle winner. Second, the SLO drop: in the streaming event-time pipeline, Hal's bid arrives at ingest 24 s, by which point the watermark has advanced to 17 s — past `window_end (10) + allowed_lateness (5) = 15` — so Hal's bid is dropped. Because show #99 has dropped data, it is excluded from the parity check and reported under `late_drops` rather than counted as a parity failure.
 
 ---
 

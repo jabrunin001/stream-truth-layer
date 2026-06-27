@@ -66,7 +66,7 @@ The batch pipeline in this repo (`pipelines/batch.py`) is the ground-truth oracl
 
 ## What this toy omits vs real Flink
 
-This engine is built for clarity, not production. The gaps are intentional but worth naming explicitly:
+This engine is built for clarity, not production. The gaps are intentional:
 
 **Per-show watermarks, not per-subtask.** In real Flink, each parallel subtask maintains its own watermark, and the operator receives the minimum watermark across all upstream subtasks. Watermark propagation is a distributed coordination problem. Here, each show carries its own `BoundedOutOfOrdernessWatermark` instance, which is correct for a single-threaded simulation but does not model the subtask-minimum behavior.
 
