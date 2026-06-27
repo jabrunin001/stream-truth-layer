@@ -51,8 +51,11 @@ lateness = 5s, watermark out-of-orderness bound = 5s.
 
 - **Naive (processing-time):** Cy's $150 bid arrives too late to land in the window by arrival time →
   dropped → **winner = Bo @ 14000¢**, show GMV undercounted. Job still "runs green."
-- **Event-time + allowed lateness:** Cy's bid (event_time 4s) lands within `window_end + allowed
-  lateness`, triggers a late firing → **winner = Cy @ 15000¢** == batch ground-truth.
+- **Event-time + allowed lateness:** Cy's bid has `event_time = 4s`, so event-time windowing assigns
+  it to window [0–10s] regardless of arrival time. When Cy is processed (ingest ~11s), show #42's
+  watermark is 0 (well below `window_end = 10`), so the engine classifies Cy as `on_time` — no late
+  firing occurs. The window result is emitted at end-of-stream via `results()` →
+  **winner = Cy @ 15000¢** == batch ground-truth.
 
 **Multi-tenancy / SLO coverage via additional shows:**
 
@@ -82,9 +85,11 @@ Small, single-purpose, independently testable units:
   emits `watermark = max_event_time_seen − max_lateness`.
 - **`state.py`** — `KeyedStateBackend`: per-`show_id` state, with `snapshot()` / `restore()`
   serialization to disk. The unit that embodies "state management."
-- **`window.py`** — `EventTimeTumblingWindows(size, allowed_lateness)`: assigns events to windows by
-  `event_time`; fires when watermark ≥ `window_end`; retains state until `window_end + allowed_lateness`;
-  late-but-allowed events trigger a late firing; events past that → **late side output**.
+- **`window.py`** — `EventTimeTumblingWindowOperator(size, allowed_lateness)`: assigns events to
+  tumbling windows by `event_time`; classifies each as `on_time`, `late_allowed` (within
+  `window_end + allowed_lateness`), or `dropped` (beyond it — routed to a late side output and counted
+  as an SLO signal); emits final per-window winners at end-of-stream via `results()`. This is a
+  simplification of Flink's incremental on-watermark firing.
 - **`checkpoint.py`** — `Checkpoint`: snapshot/restore of `(KeyedStateBackend state, source offset,
   watermark)`.
 - **`sink.py`** — `IdempotentSink`: dedups on `(show_id, window)`; materializes results to a small

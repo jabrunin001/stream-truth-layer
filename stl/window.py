@@ -20,7 +20,7 @@ class EventTimeTumblingWindowOperator:
         key = window_key(event.show_id, start)
         acc = self.state.get(key) or {
             "show_id": event.show_id, "window_start": start, "window_end": end,
-            "winning_bid_cents": -1, "winner": None, "fired": False,
+            "winning_bid_cents": -1, "winner": None,
         }
         outcome = "late_allowed" if watermark >= end else "on_time"
         if event.type is EventType.BID and event.amount_cents > acc["winning_bid_cents"]:
@@ -37,6 +37,5 @@ class EventTimeTumblingWindowOperator:
                 show_id=a["show_id"], window_start=a["window_start"],
                 window_end=a["window_end"], winner=a["winner"],
                 winning_bid_cents=max(a["winning_bid_cents"], 0),
-                late_firing=a["fired"],
             ))
         return sorted(out, key=lambda r: (r.show_id, r.window_start))

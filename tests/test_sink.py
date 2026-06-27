@@ -4,7 +4,7 @@ from stl.sink import IdempotentSink, NaiveAppendSink
 
 
 def _r(show, start, amt, winner="Cy"):
-    return WindowResult(show, start, start + 10, winner, amt, False)
+    return WindowResult(show, start, start + 10, winner, amt)
 
 
 def test_idempotent_sink_dedups_on_replay():

@@ -94,7 +94,7 @@ The `stl/` package is a set of small, independently testable units wired togethe
 - `source.py` — `EventSource`: replays events in arrival (`ingest_time`) order; exposes a resumable `offset` for checkpoint/restore via `seek()`.
 - `watermark.py` — `BoundedOutOfOrdernessWatermark(max_lateness)`: tracks `max_event_time_seen`, emits `watermark = max_event_time_seen - max_lateness`.
 - `state.py` — `KeyedStateBackend`: per-`show_id` dict state with `snapshot()` / `restore()` for serialization to disk.
-- `window.py` — `EventTimeTumblingWindowOperator`: assigns events by `event_time`, fires on watermark advance, retains state through `window_end + allowed_lateness`, routes expired events to late side output (`"dropped"`).
+- `window.py` — `EventTimeTumblingWindowOperator`: assigns events to tumbling windows by `event_time`; classifies each event as `on_time`, `late_allowed` (arrives within `window_end + allowed_lateness`), or `dropped` (beyond it — routed to a late side output and counted as an SLO signal); emits final per-window winners at end-of-stream via `results()`. This is a simplification of Flink's incremental on-watermark firing.
 - `sink.py` — `IdempotentSink`: deduplicated on `(show_id, window_start)`; materializes results to DuckDB serving table. `NaiveAppendSink` is the non-idempotent foil used to demonstrate double-counting.
 - `metrics.py` — `PerShowMetrics`: per-tenant counters — events processed, `late_allowed`, `dropped`, watermark lag.
 - `checkpoint.py` — `Checkpoint` dataclass + `take()` / `restore_into()`: snapshots `(KeyedStateBackend state, source offset, per-show watermarks)` atomically.

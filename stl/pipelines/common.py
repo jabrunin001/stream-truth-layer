@@ -12,7 +12,6 @@ class WindowResult:
     window_end: float
     winner: str | None
     winning_bid_cents: int
-    late_firing: bool
 
 
 def window_key(show_id: int, window_start: float) -> str:

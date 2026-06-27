@@ -21,7 +21,7 @@ def reconcile(inject_late: bool = True) -> dict:
                   for k in shared)
 
     divergences = []
-    for k in set(naive) & set(batch):
+    for k in sorted(set(naive) & set(batch)):
         if naive[k]["winner"] != batch[k]["winner"]:
             divergences.append({
                 "key": k, "naive_winner": naive[k]["winner"],
