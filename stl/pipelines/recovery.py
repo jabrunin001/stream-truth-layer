@@ -44,7 +44,12 @@ def run_with_crash(events, crash_at: int) -> dict:
     source2 = EventSource(events)
     restored_wms = defaultdict(_wm)
     restored_wms.update(ckpt_mod.restore_into(ckpt, state2, source2, _wm))
-    _drain(source2, op2, restored_wms)  # replays only offset..end
+    replayed_count = 0
+    for e in source2:  # replays only offset..end
+        wm = restored_wms[e.show_id]
+        wm.observe(e.event_time)
+        op2.process(e, watermark=wm.current)
+        replayed_count += 1
     recovered_sink = IdempotentSink()
     for r in op2.results():
         recovered_sink.write(r)
@@ -65,4 +70,6 @@ def run_with_crash(events, crash_at: int) -> dict:
         "recovered_gmv": recovered_gmv, "clean_gmv": clean_gmv,
         "double_count_gmv": double_count_gmv,
         "exactly_once": recovered_gmv == clean_gmv != double_count_gmv,
+        "replayed_count": replayed_count,
+        "total_events": len(events),
     }
