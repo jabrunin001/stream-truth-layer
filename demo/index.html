@@ -3,193 +3,602 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>stream-truth-layer</title>
+<title>stream-truth-layer — event-time truth dashboard</title>
+<meta name="description" content="A pure-Python mini-Flink streaming engine for live auctions: watermarks, allowed lateness, checkpoint/exactly-once. Interactive dashboard.">
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0a;color:#e5e5e5;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;line-height:1.6;padding:0 1rem}
-a{color:#22c55e;text-decoration:none} a:hover{text-decoration:underline}
-.wrap{max-width:800px;margin:0 auto;padding:3rem 0 2rem}
-header{border-bottom:1px solid #262626;padding-bottom:1.5rem;margin-bottom:2.5rem}
-header h1{font-size:1.6rem;letter-spacing:-0.02em}
-header p{color:#a3a3a3;margin-top:.4rem;font-size:.9rem}
-section{margin-bottom:2.5rem}
-h2{font-size:1rem;color:#737373;text-transform:uppercase;letter-spacing:.08em;margin-bottom:1rem}
-.verdicts{display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:.8rem}
-.verdict{flex:1;min-width:200px;border:1px solid #262626;border-radius:6px;padding:1rem 1.2rem}
-.verdict .lbl{font-size:.75rem;color:#737373;margin-bottom:.3rem}
-.verdict .win{font-size:1.1rem;font-weight:600}
-.verdict.bad .win{color:#ef4444} .verdict.good .win{color:#22c55e}
-.note{font-size:.82rem;color:#a3a3a3;line-height:1.55}
-.controls{display:flex;gap:.75rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem}
-.btn{background:#111;border:1px solid #333;color:#e5e5e5;font-family:inherit;font-size:.82rem;
-     padding:.4rem .9rem;border-radius:4px;cursor:pointer;transition:border-color .15s}
-.btn:hover{border-color:#555} .btn.on{border-color:#22c55e;color:#22c55e}
-canvas{display:block;width:100%;height:160px;border:1px solid #262626;border-radius:6px;background:#0d0d0d}
-.caption{font-size:.78rem;color:#737373;margin-top:.6rem;line-height:1.45}
-.banner{margin-top:.9rem;border:1px solid #262626;border-radius:6px;padding:.75rem 1.2rem;transition:color .3s,border-color .3s}
-.banner .blbl{font-size:.72rem;color:#737373;margin-bottom:.2rem}
-.banner .bwin{font-weight:700;font-size:1.1rem}
-.banner.ok{border-color:#166534;color:#22c55e} .banner.err{border-color:#7f1d1d;color:#ef4444}
-footer{border-top:1px solid #262626;padding-top:1.2rem;font-size:.82rem;color:#737373;display:flex;gap:1.5rem;flex-wrap:wrap}
+  :root{
+    --bg:#07090d; --bg-1:#0c1118; --bg-2:#111923; --raised:#16202c;
+    --line:#1d2733; --line-2:#28354455;
+    --txt:#e6edf3; --dim:#9aa7b4; --mut:#65727f;
+    --blue:#3b82f6; --blue-deep:#1e40af; --blue-soft:#60a5fa;
+    --good:#22c55e; --good-deep:#15803d;
+    --bad:#ef4444; --bad-deep:#7f1d1d;
+    --amber:#f59e0b; --amber-deep:#b45309;
+    --glow:rgba(59,130,246,.45);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --r:10px; --ease:cubic-bezier(.22,.61,.36,1);
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--txt);font-family:var(--sans);line-height:1.6;
+    -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;
+    background-image:radial-gradient(900px 420px at 82% -10%, rgba(30,64,175,.18), transparent 60%);}
+  a{color:var(--blue-soft);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .mono{font-family:var(--mono)}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 1.25rem}
+  :focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
+
+  /* ---- top bar ---- */
+  .topbar{position:sticky;top:0;z-index:40;background:rgba(7,9,13,.82);
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .topbar .wrap{display:flex;align-items:center;gap:1rem;height:60px}
+  .brand{font-family:var(--mono);font-weight:600;font-size:.98rem;letter-spacing:-.01em;
+    display:flex;align-items:center;gap:.55rem;white-space:nowrap}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--good);
+    box-shadow:0 0 10px var(--good);animation:pulse 2.4s var(--ease) infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .pills{display:flex;gap:.5rem;margin-left:auto;flex-wrap:wrap;align-items:center}
+  .pill{font-family:var(--mono);font-size:.72rem;padding:.28rem .6rem;border-radius:999px;
+    border:1px solid var(--line);color:var(--dim);display:flex;align-items:center;gap:.4rem;white-space:nowrap}
+  .pill.ok{color:var(--good);border-color:#14532d;background:rgba(34,197,94,.07)}
+  .pill .k{width:6px;height:6px;border-radius:50%;background:currentColor}
+  .navlinks{display:none;gap:1.1rem;font-size:.82rem}
+  .navlinks a{color:var(--dim)} .navlinks a:hover{color:var(--txt);text-decoration:none}
+  @media(min-width:880px){.navlinks{display:flex}}
+
+  /* ---- hero ---- */
+  header.hero{padding:3.5rem 0 1rem}
+  .eyebrow{font-family:var(--mono);font-size:.74rem;letter-spacing:.16em;text-transform:uppercase;color:var(--blue-soft)}
+  h1{font-size:clamp(1.7rem,4.4vw,2.5rem);line-height:1.12;letter-spacing:-.02em;margin:.7rem 0 .6rem;font-weight:700}
+  h1 .em{color:var(--blue-soft)}
+  .lead{color:var(--dim);max-width:62ch;font-size:1.02rem}
+  .statgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:.85rem;margin:2rem 0 .5rem}
+  @media(min-width:720px){.statgrid{grid-template-columns:repeat(4,1fr)}}
+  .stat{background:linear-gradient(180deg,var(--bg-2),var(--bg-1));border:1px solid var(--line);
+    border-radius:var(--r);padding:1rem 1.05rem}
+  .stat .lbl{font-family:var(--mono);font-size:.7rem;color:var(--mut);text-transform:uppercase;letter-spacing:.07em}
+  .stat .val{font-family:var(--mono);font-size:1.5rem;font-weight:600;margin-top:.35rem;line-height:1.1}
+  .stat .sub{font-size:.76rem;color:var(--dim);margin-top:.25rem}
+  .stat.bad .val{color:var(--bad)} .stat.good .val{color:var(--good)} .stat.blue .val{color:var(--blue-soft)}
+
+  /* ---- sections ---- */
+  section{padding:2.75rem 0;border-top:1px solid var(--line);margin-top:2.5rem}
+  .sec-head{display:flex;align-items:baseline;gap:.8rem;flex-wrap:wrap;margin-bottom:.4rem}
+  .sec-head h2{font-size:1.3rem;letter-spacing:-.01em;font-weight:650}
+  .sec-num{font-family:var(--mono);font-size:.78rem;color:var(--blue);border:1px solid var(--line);
+    border-radius:6px;padding:.1rem .45rem}
+  .sec-desc{color:var(--dim);max-width:70ch;font-size:.95rem;margin-bottom:1.4rem}
+
+  .card{background:linear-gradient(180deg,var(--bg-1),var(--bg));border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .card-pad{padding:1.25rem}
+
+  /* ---- controls ---- */
+  .controls{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem}
+  .btn{font-family:var(--mono);font-size:.8rem;color:var(--txt);background:var(--bg-2);
+    border:1px solid var(--line);border-radius:8px;padding:.46rem .85rem;cursor:pointer;
+    display:inline-flex;align-items:center;gap:.45rem;transition:border-color .18s var(--ease),background .18s var(--ease),color .18s var(--ease)}
+  .btn:hover{border-color:#39536f;background:var(--raised)}
+  .btn svg{width:15px;height:15px}
+  .btn.toggle.on{border-color:var(--good-deep);color:var(--good);background:rgba(34,197,94,.08)}
+  .btn.toggle.off{border-color:var(--bad-deep);color:var(--bad);background:rgba(239,68,68,.07)}
+  .btn.primary{border-color:var(--blue-deep);color:var(--blue-soft);background:rgba(59,130,246,.1)}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:4px;
+    background:var(--line);flex:1;min-width:140px;cursor:pointer}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+    background:var(--blue);box-shadow:0 0 8px var(--glow);cursor:pointer;border:2px solid #0a1018}
+  input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--blue);border:2px solid #0a1018;cursor:pointer}
+
+  /* ---- simulator ---- */
+  .sim-canvas{display:block;width:100%;height:230px;background:
+    radial-gradient(120% 80% at 50% -20%, rgba(30,64,175,.12), transparent 60%), var(--bg)}
+  .sim-foot{display:flex;gap:1.2rem;flex-wrap:wrap;align-items:center;justify-content:space-between;
+    padding:.9rem 1.25rem;border-top:1px solid var(--line);background:var(--bg-1)}
+  .banner{display:flex;align-items:center;gap:.7rem}
+  .banner .blbl{font-family:var(--mono);font-size:.7rem;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+  .banner .bwin{font-family:var(--mono);font-weight:700;font-size:1.15rem;transition:color .3s var(--ease)}
+  .banner.ok .bwin{color:var(--good)} .banner.err .bwin{color:var(--bad)} .banner.idle .bwin{color:var(--dim)}
+  .legend{display:flex;gap:.9rem;flex-wrap:wrap;font-family:var(--mono);font-size:.72rem;color:var(--dim)}
+  .legend span{display:inline-flex;align-items:center;gap:.35rem}
+  .legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
+
+  /* ---- reconciliation matrix ---- */
+  .matrix{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.82rem}
+  .matrix th,.matrix td{text-align:left;padding:.7rem .8rem;border-bottom:1px solid var(--line)}
+  .matrix thead th{color:var(--mut);font-weight:500;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
+  .matrix tbody tr{cursor:pointer;transition:background .15s var(--ease)}
+  .matrix tbody tr:hover,.matrix tbody tr[aria-selected=true]{background:rgba(59,130,246,.07)}
+  .matrix td.win{font-weight:600}
+  .cell-bad{color:var(--bad)} .cell-good{color:var(--good)} .cell-amber{color:var(--amber)} .cell-mut{color:var(--mut)}
+  .tag{font-size:.66rem;padding:.12rem .45rem;border-radius:5px;border:1px solid;white-space:nowrap}
+  .tag.div{color:var(--bad);border-color:var(--bad-deep);background:rgba(239,68,68,.08)}
+  .tag.par{color:var(--good);border-color:var(--good-deep);background:rgba(34,197,94,.07)}
+  .tag.drop{color:var(--amber);border-color:var(--amber-deep);background:rgba(245,158,11,.08)}
+  .explain{margin-top:1rem;border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:8px;
+    padding:.9rem 1.1rem;background:var(--bg-1);font-size:.9rem;color:var(--dim);min-height:3.2rem}
+  .explain strong{color:var(--txt)}
+
+  /* ---- SLO ---- */
+  .slo-grid{display:grid;grid-template-columns:1fr;gap:1.1rem}
+  @media(min-width:760px){.slo-grid{grid-template-columns:1.1fr 1fr}}
+  .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:.7rem}
+  .tile{border:1px solid var(--line);border-radius:10px;padding:.85rem .9rem;background:var(--bg-1)}
+  .tile .t-lbl{font-family:var(--mono);font-size:.68rem;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+  .tile .t-val{font-family:var(--mono);font-size:1.45rem;font-weight:600;margin-top:.2rem}
+  .tile.flag{border-color:var(--amber-deep);background:rgba(245,158,11,.06)}
+  .tile.flag .t-val{color:var(--amber)}
+  .showsel{display:flex;gap:.45rem;margin-bottom:1rem;flex-wrap:wrap}
+  .chip{font-family:var(--mono);font-size:.78rem;padding:.4rem .8rem;border-radius:8px;border:1px solid var(--line);
+    background:var(--bg-2);color:var(--dim);cursor:pointer;transition:all .15s var(--ease)}
+  .chip:hover{border-color:#39536f;color:var(--txt)}
+  .chip[aria-pressed=true]{border-color:var(--blue-deep);color:var(--blue-soft);background:rgba(59,130,246,.1)}
+  .chip .warn{color:var(--amber)}
+
+  figure{margin:0}
+  figcaption{font-family:var(--mono);font-size:.72rem;color:var(--mut);margin-bottom:.6rem;text-transform:uppercase;letter-spacing:.05em}
+
+  /* ---- recovery ---- */
+  .rec-grid{display:grid;grid-template-columns:1fr;gap:1.2rem}
+  @media(min-width:820px){.rec-grid{grid-template-columns:1fr 1fr}}
+  .steps{display:flex;flex-direction:column;gap:.55rem}
+  .step{display:flex;gap:.75rem;align-items:flex-start;border:1px solid var(--line);border-radius:9px;
+    padding:.7rem .85rem;background:var(--bg-1);transition:border-color .25s var(--ease),background .25s var(--ease);opacity:.5}
+  .step.active{opacity:1;border-color:var(--blue-deep);background:rgba(59,130,246,.08)}
+  .step.done{opacity:1}
+  .step .n{font-family:var(--mono);font-size:.78rem;color:var(--blue-soft);border:1px solid var(--line);
+    border-radius:6px;width:26px;height:26px;display:grid;place-items:center;flex-shrink:0}
+  .step.active .n{border-color:var(--blue)}
+  .step .s-t{font-weight:600;font-size:.9rem}
+  .step .s-d{font-size:.82rem;color:var(--dim);font-family:var(--mono)}
+
+  footer{border-top:1px solid var(--line);margin-top:3rem;padding:2rem 0 3rem}
+  .foot-links{display:flex;gap:1.5rem;flex-wrap:wrap;font-family:var(--mono);font-size:.85rem}
+  .foot-note{color:var(--mut);font-size:.8rem;margin-top:1rem;max-width:70ch}
+
+  @media(prefers-reduced-motion:reduce){
+    *{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>stream-truth-layer</h1>
-    <p>Event-time truth for Whatnot live auctions &mdash; watermarks, checkpoints, exactly-once.</p>
-  </header>
 
-  <section>
-    <h2>The Bug</h2>
-    <div class="verdicts">
-      <div class="verdict bad"><div class="lbl">Naive (processing-time)</div><div class="win">Bo &mdash; $140.00</div></div>
-      <div class="verdict good"><div class="lbl">Event-time + 5s watermark</div><div class="win">Cy &mdash; $150.00</div></div>
-    </div>
-    <p class="note">Show #42, Charizard final [0&ndash;10s]. Cy's $150 bid has event-time 4s but arrives
-    from a laggy phone at processing-time ~11s &mdash; one second after the naive window closes.
-    Naive windowing buckets Cy into [10&ndash;20s] and crowns Bo at $140. A 5-second watermark
-    holds the window open until processing-time 15s, absorbs Cy's late bid, and correctly
-    declares Cy the winner at $150 &mdash; matching the batch oracle.</p>
-  </section>
-
-  <section>
-    <h2>Late-Event Simulator &mdash; Show #42</h2>
-    <div class="controls">
-      <button class="btn on" id="btnWM">watermarking: ON</button>
-      <button class="btn" id="btnRP">replay</button>
-    </div>
-    <canvas id="sim"></canvas>
-    <p class="caption">Watermarking lets event-time windowing wait for late bids and place them by when they happened; naive processing-time windowing drops Cy&rsquo;s late bid into the next window.</p>
-    <div class="banner" id="banner">
-      <div class="blbl">Charizard final [0&ndash;10s] winner</div>
-      <div class="bwin" id="bwin">Charizard final &mdash; collecting bids&hellip;</div>
-    </div>
-  </section>
-
-  <footer>
-    <a href="https://github.com/jabrunin001/stream-truth-layer" target="_blank" rel="noopener">github.com/jabrunin001/stream-truth-layer</a>
-    <a href="./observe.html">per-tenant SLOs &rarr;</a>
-  </footer>
+<div class="topbar">
+  <div class="wrap">
+    <span class="brand"><span class="dot" aria-hidden="true"></span>stream-truth-layer</span>
+    <nav class="navlinks" aria-label="Sections">
+      <a href="#gate">Truth gate</a>
+      <a href="#reconcile">Reconcile</a>
+      <a href="#slo">SLOs</a>
+      <a href="#exactly-once">Exactly-once</a>
+    </nav>
+    <div class="pills" id="statusPills" aria-label="System status"></div>
+  </div>
 </div>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Event-time stream processing · live auctions</p>
+    <h1>Event-time <span class="em">truth</span> for Whatnot live auctions.</h1>
+    <p class="lead">A pure-Python mini-Flink engine — watermarks, keyed state, allowed lateness, and
+      checkpoint/exactly-once. A laggy phone delivers the winning bid late; a naive processing-time
+      pipeline crowns the wrong bidder while the job runs green. The event-time engine reconciles to a
+      batch oracle. Everything below runs on the engine's real output.</p>
+    <div class="statgrid" id="heroStats"></div>
+  </div>
+</header>
+
+<main>
+  <!-- 1. Truth gate simulator -->
+  <section id="gate">
+    <div class="wrap">
+      <div class="sec-head"><span class="sec-num">01</span><h2>The watermark truth gate</h2></div>
+      <p class="sec-desc">Show&nbsp;#42, the Charizard final. Tumbling window <span class="mono">[0–10s]</span>.
+        Cy's winning <span class="mono">$150</span> bid happened at event-time 4s but arrives late
+        (~11s). Toggle watermarking to watch the declared winner flip — naive processing-time
+        windowing buckets Cy's bid into the next window and crowns Bo at <span class="mono">$140</span>.</p>
+      <div class="card">
+        <canvas class="sim-canvas" id="sim" role="img"
+          aria-label="Timeline simulator for Show 42 showing four bids and an advancing watermark; toggling watermarking changes the winner between Cy at 150 dollars and Bo at 140 dollars."></canvas>
+        <div class="sim-foot">
+          <div class="banner idle" id="banner">
+            <div>
+              <div class="blbl">[0–10s] winner</div>
+              <div class="bwin" id="bwin">collecting bids…</div>
+            </div>
+          </div>
+          <div class="legend" aria-hidden="true">
+            <span><i style="background:#60a5fa"></i>on-time bid</span>
+            <span><i style="background:#f59e0b"></i>late arrival</span>
+            <span><i style="background:#ef4444"></i>dropped</span>
+          </div>
+        </div>
+        <div class="card-pad" style="border-top:1px solid var(--line)">
+          <div class="controls">
+            <button class="btn primary" id="playBtn" aria-label="Play or pause the simulation">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><span>Play</span>
+            </button>
+            <button class="btn toggle on" id="wmBtn" aria-pressed="true">watermarking: ON</button>
+            <input type="range" id="scrub" min="0" max="200" value="0" aria-label="Scrub simulation time">
+            <span class="mono" id="clock" style="font-size:.78rem;color:var(--dim);min-width:74px">t = 0.0s</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Reconciliation matrix -->
+  <section id="reconcile">
+    <div class="wrap">
+      <div class="sec-head"><span class="sec-num">02</span><h2>Reconciliation matrix</h2>
+        <span class="tag par" id="oracleTag">matches oracle</span></div>
+      <p class="sec-desc">Three pipelines over one event log. The event-time engine must equal the
+        batch oracle on every comparable window; the naive pipeline drifts. Shows with an
+        allowed-lateness drop are excluded from the parity check and reported as an SLO signal, not
+        a failure. Select a row for the detail.</p>
+      <div class="card card-pad" style="overflow-x:auto">
+        <table class="matrix" id="matrix">
+          <thead><tr>
+            <th scope="col">window</th><th scope="col">naive (proc-time)</th>
+            <th scope="col">event-time</th><th scope="col">batch oracle</th><th scope="col">status</th>
+          </tr></thead>
+          <tbody id="matrixBody"></tbody>
+        </table>
+      </div>
+      <div class="explain" id="reconcileExplain" role="status" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <!-- 3. Per-tenant SLOs -->
+  <section id="slo">
+    <div class="wrap">
+      <div class="sec-head"><span class="sec-num">03</span><h2>Per-tenant SLOs</h2></div>
+      <p class="sec-desc">Each <span class="mono">show_id</span> is an isolated keyed-state partition.
+        Watermark lag is liveness; dropped bids (beyond allowed lateness) are the correctness signal.
+        Select a tenant.</p>
+      <div class="showsel" id="showSel" role="group" aria-label="Select a show"></div>
+      <div class="slo-grid">
+        <div class="tiles" id="sloTiles"></div>
+        <div class="card card-pad">
+          <figure>
+            <figcaption>Events processed per show</figcaption>
+            <div id="sloChart" aria-hidden="false"></div>
+          </figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Exactly-once -->
+  <section id="exactly-once">
+    <div class="wrap">
+      <div class="sec-head"><span class="sec-num">04</span><h2>Exactly-once recovery</h2>
+        <span class="tag par" id="eoTag">preserved</span></div>
+      <p class="sec-desc">Crash mid-stream, restore from the checkpoint, and replay only the events
+        after the committed offset into an idempotent sink. Recovered GMV equals the clean run; a
+        naive at-least-once path would double-count. Press play to step through it.</p>
+      <div class="rec-grid">
+        <div class="card card-pad">
+          <div class="controls"><button class="btn primary" id="recPlay">Run recovery</button></div>
+          <div class="steps" id="recSteps"></div>
+        </div>
+        <div class="card card-pad">
+          <figure>
+            <figcaption>GMV per show — exactly-once vs at-least-once</figcaption>
+            <div id="recChart"></div>
+          </figure>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-links">
+      <a href="https://github.com/jabrunin001/stream-truth-layer">GitHub repo →</a>
+      <a href="./observe.html">CLI-generated SLO widget →</a>
+      <a href="https://github.com/jabrunin001/stream-truth-layer/blob/main/docs/adr/0001-when-flink.md">ADR: when Flink →</a>
+    </div>
+    <p class="foot-note">Built with a pure-Python streaming engine (no Java, no cluster). Every number
+      on this page is the engine's real <span class="mono">reconcile</span> /
+      <span class="mono">checkpoint-restore</span> output, CI-asserted. Dark-OLED operations design.</p>
+  </div>
+</footer>
+
 <script>
 (function(){
   "use strict";
-  // Bids: event_times 0,2,4,5. Cy (index 2, et=4) arrives LATE at wall-clock ~11s.
-  const BIDS=[{name:"Ana",amt:100,et:0},{name:"Bo",amt:120,et:2},{name:"Cy",amt:150,et:4},{name:"Bo",amt:140,et:5}];
-  const CY=2, CY_PT=11, AXIS=20, WIN=10, FPS=60, SPEED=3; // 1 real sec = 3 sim sec → 20s in ~6.67s
-  const COLORS={Ana:"#60a5fa",Bo:"#f59e0b",Cy:"#22c55e"};
-  const cv=document.getElementById("sim"), cx=cv.getContext("2d");
-  const btnWM=document.getElementById("btnWM"), btnRP=document.getElementById("btnRP");
-  const banner=document.getElementById("banner"), bwin=document.getElementById("bwin");
-  let wmOn=true, frame=0, raf=null, loopTimer=null;
-
-  function dpr(){return window.devicePixelRatio||1}
-  function W(){return cv.clientWidth} function H(){return cv.clientHeight}
-  function resize(){const r=dpr();cv.width=W()*r;cv.height=H()*r;cx.scale(r,r)}
-  function xOf(s){return 48+(s/AXIS)*(W()-64)}
-  function simT(){return (frame/FPS)*SPEED} // wall-clock "now" in simulated seconds
-
-  function setWinner(txt,ok){
-    bwin.textContent=txt;
-    banner.className="banner"+(ok===true?" ok":ok===false?" err":"");
-  }
-
-  function draw(){
-    const w=W(),h=H(),axY=h-36,t=simT();
-    cx.clearRect(0,0,w,h);
-
-    /* x-axis */
-    cx.strokeStyle="#262626";cx.lineWidth=1;
-    cx.beginPath();cx.moveTo(xOf(0),axY);cx.lineTo(xOf(AXIS),axY);cx.stroke();
-    cx.font='10px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
-    for(let s=0;s<=AXIS;s+=5){
-      const x=xOf(s);
-      cx.strokeStyle="#333";cx.lineWidth=1;
-      cx.beginPath();cx.moveTo(x,axY-4);cx.lineTo(x,axY+4);cx.stroke();
-      cx.fillStyle="#737373";cx.textAlign="center";cx.fillText(s+"s",x,axY+15);
+  /* ---- real engine output (from `stl reconcile` / `stl checkpoint-restore`) ---- */
+  const DATA = {
+    events: [
+      {show:42,bidder:"Ana",cents:10000,et:0.0,ig:0.5},
+      {show:42,bidder:"Bo", cents:12000,et:2.0,ig:2.5},
+      {show:42,bidder:"Cy", cents:15000,et:4.0,ig:11.0},
+      {show:42,bidder:"Bo", cents:14000,et:5.0,ig:5.5}
+    ],
+    rows:[
+      {key:"42|0", naive:["Bo",14000], event:["Cy",15000], batch:["Cy",15000]},
+      {key:"42|10",naive:["Cy",15000], event:null,         batch:null},
+      {key:"7|0",  naive:["Em",500],   event:["Em",500],   batch:["Em",500]},
+      {key:"99|0", naive:["Fi",8000],  event:["Fi",8000],  batch:["Hal",9000]},
+      {key:"99|20",naive:["Gus",20000],event:["Gus",20000],batch:["Gus",20000]}
+    ],
+    matchesOracle:true,
+    metrics:{
+      42:{events:4,late:0,dropped:0,lag:5.0},
+      7: {events:2,late:0,dropped:0,lag:5.0},
+      99:{events:3,late:0,dropped:1,lag:5.0}
+    },
+    recovery:{
+      clean:{7:500,42:15000,99:28000},
+      recovered:{7:500,42:15000,99:28000},
+      double:{7:1000,42:30000,99:56000},
+      exactlyOnce:true, replayed:6, total:9
     }
-    cx.fillStyle="#555";cx.textAlign="left";cx.font='9px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
-    cx.fillText("time (seconds) →",xOf(0),axY+28);
+  };
+  const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const $ = s => document.querySelector(s);
+  const usd = c => "$"+(c/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const SVGNS="http://www.w3.org/2000/svg";
+  function svgEl(t,a){const n=document.createElementNS(SVGNS,t);for(const k in a)n.setAttribute(k,a[k]);return n;}
 
-    /* fixed dashed window [0-10s] boundary */
-    const wx=xOf(WIN);
-    cx.strokeStyle="#334155";cx.setLineDash([4,4]);cx.lineWidth=1;
-    cx.beginPath();cx.moveTo(wx,24);cx.lineTo(wx,axY);cx.stroke();cx.setLineDash([]);
-    cx.fillStyle="#475569";cx.textAlign="center";cx.font='9px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
-    cx.fillText("window [0–10s] boundary",wx,18);
-
-    /* advancing "now" line — wall-clock / processing time */
-    const nowX=xOf(Math.min(t,AXIS));
-    cx.strokeStyle="#e5e5e5";cx.lineWidth=1;cx.globalAlpha=0.3;
-    cx.beginPath();cx.moveTo(nowX,26);cx.lineTo(nowX,axY-2);cx.stroke();
-    cx.globalAlpha=1;
-    if(t<AXIS-0.3){
-      cx.fillStyle="#888";cx.textAlign="center";cx.font='8px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
-      cx.fillText("now",nowX,22);
-    }
-
-    /* bid dots */
-    BIDS.forEach((b,i)=>{
-      let appearAt,dx;
-      if(i===CY){
-        if(t<CY_PT) return;               // hidden until Cy's phone delivers the bid
-        // WM ON:  place at event-time 4s (inside [0-10s] window)
-        // WM OFF: place at arrival time 11s (shunted into [10-20s] region)
-        dx=wmOn?xOf(b.et):xOf(CY_PT);
-        appearAt=CY_PT;
-      } else {
-        if(t<b.et) return;
-        dx=xOf(b.et); appearAt=b.et;
-      }
-      const alpha=Math.min(1,(t-appearAt)/0.4);
-      cx.globalAlpha=alpha;
-      cx.beginPath();cx.arc(dx,axY-18,7,0,Math.PI*2);cx.fillStyle=COLORS[b.name]||"#e5e5e5";cx.fill();
-      cx.fillStyle="#e5e5e5";cx.textAlign="center";
-      cx.font='bold 9px ui-monospace,"SF Mono",Menlo,Consolas,monospace';cx.fillText(b.name,dx,axY-32);
-      cx.font='9px ui-monospace,"SF Mono",Menlo,Consolas,monospace';cx.fillText("$"+b.amt,dx,axY-4);
-      if(i===CY){cx.fillStyle="#ef4444";cx.font='bold 8px ui-monospace,"SF Mono",Menlo,Consolas,monospace';cx.fillText("LATE",dx,axY-44);}
-      cx.globalAlpha=1;
+  /* ---------- status pills + hero stats ---------- */
+  function renderStatus(){
+    const p=$("#statusPills");
+    const items=[
+      {ok:DATA.matchesOracle, t:"matches oracle"},
+      {ok:DATA.recovery.exactlyOnce, t:"exactly-once"},
+      {ok:true, t:"3 shows · 9 events", plain:true}
+    ];
+    p.innerHTML="";
+    items.forEach(it=>{
+      const s=document.createElement("span");
+      s.className="pill"+(it.ok&&!it.plain?" ok":"");
+      s.innerHTML=(it.plain?"":'<span class="k"></span>')+it.t+(it.ok&&!it.plain?" ✓":"");
+      p.appendChild(s);
     });
+    const hs=$("#heroStats");
+    const stats=[
+      {cls:"bad", lbl:"Naive winner", val:"Bo · $140", sub:"wrong — late bid mis-windowed"},
+      {cls:"good",lbl:"Event-time winner", val:"Cy · $150", sub:"matches the batch oracle"},
+      {cls:"blue",lbl:"Exactly-once", val:"preserved", sub:"replayed 6 / 9 after crash"},
+      {cls:"",    lbl:"SLO drops", val:"1", sub:"show #99 · beyond allowed lateness"}
+    ];
+    hs.innerHTML="";
+    stats.forEach(s=>{
+      const d=document.createElement("div");d.className="stat "+s.cls;
+      d.innerHTML=`<div class="lbl">${s.lbl}</div><div class="val">${s.val}</div><div class="sub">${s.sub}</div>`;
+      hs.appendChild(d);
+    });
+  }
 
-    /* winner banner — resolves the moment Cy's late bid arrives at t=11s */
-    if(t<CY_PT){
-      setWinner("Charizard final — collecting bids…",null);
-    } else if(wmOn){
-      // WM ON: event-time windowing places Cy (et=4s) inside [0-10s] → Cy wins
-      setWinner("Cy — $150.00",true);
-    } else {
-      // WM OFF: processing-time windowing places Cy (pt=11s) in [10-20s] → Bo wins [0-10s]
-      setWinner("Bo — $140.00",false);
+  /* ---------- 1. simulator ---------- */
+  const SIM={AXIS:20,WIN:10,CY_IG:11,SPEED:3,wmOn:true,t:0,playing:false,raf:null};
+  const cv=$("#sim"), ctx=cv.getContext("2d");
+  const COLOR={Ana:"#60a5fa",Bo:"#f59e0b",Cy:"#22c55e",Em:"#60a5fa"};
+  function fit(){const r=window.devicePixelRatio||1;cv.width=cv.clientWidth*r;cv.height=cv.clientHeight*r;ctx.setTransform(r,0,0,r,0,0);}
+  function xOf(s,w){return 54+(s/SIM.AXIS)*(w-84);}
+  function drawSim(){
+    const w=cv.clientWidth,h=cv.clientHeight,axY=h-42,t=SIM.t;
+    ctx.clearRect(0,0,w,h);
+    // axis
+    ctx.strokeStyle="#1d2733";ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(xOf(0,w),axY);ctx.lineTo(xOf(SIM.AXIS,w),axY);ctx.stroke();
+    ctx.font='10px ui-monospace,Menlo,monospace';ctx.textAlign="center";
+    for(let s=0;s<=SIM.AXIS;s+=5){const x=xOf(s,w);
+      ctx.strokeStyle="#28303c";ctx.beginPath();ctx.moveTo(x,axY-4);ctx.lineTo(x,axY+4);ctx.stroke();
+      ctx.fillStyle="#65727f";ctx.fillText(s+"s",x,axY+16);}
+    // window boundary
+    const wx=xOf(SIM.WIN,w);
+    ctx.strokeStyle="#334155";ctx.setLineDash([4,5]);ctx.beginPath();ctx.moveTo(wx,26);ctx.lineTo(wx,axY);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="#475569";ctx.font='9px ui-monospace,Menlo,monospace';ctx.fillText("window [0–10s] boundary",wx,18);
+    // shade collected window region under WM-on
+    // now line
+    const nx=xOf(Math.min(t,SIM.AXIS),w);
+    ctx.strokeStyle="rgba(230,237,243,.35)";ctx.beginPath();ctx.moveTo(nx,28);ctx.lineTo(nx,axY-2);ctx.stroke();
+    ctx.fillStyle="#8b97a3";ctx.font='8px ui-monospace,Menlo,monospace';
+    if(t<SIM.AXIS-.2)ctx.fillText("now",nx,24);
+    // bids
+    DATA.events.forEach(b=>{
+      const isCy=b.bidder==="Cy"&&b.ig>=SIM.CY_IG;
+      if(t<b.ig)return;
+      const dx=SIM.wmOn?xOf(b.et,w):xOf(b.ig,w);
+      const a=Math.min(1,(t-b.ig)/0.5);
+      ctx.globalAlpha=a;
+      const col=isCy?(SIM.wmOn?"#22c55e":"#f59e0b"):(b.bidder==="Bo"?"#f59e0b":"#60a5fa");
+      ctx.beginPath();ctx.arc(dx,axY-22,7,0,7);ctx.fillStyle=col;ctx.fill();
+      ctx.fillStyle="#e6edf3";ctx.font='bold 9px ui-monospace,Menlo,monospace';ctx.textAlign="center";
+      ctx.fillText(b.bidder,dx,axY-38);
+      ctx.font='9px ui-monospace,Menlo,monospace';ctx.fillText("$"+(b.cents/100),dx,axY-6);
+      if(isCy){ctx.fillStyle="#f59e0b";ctx.font='bold 8px ui-monospace,Menlo,monospace';ctx.fillText("LATE",dx,axY-52);}
+      ctx.globalAlpha=1;
+    });
+    // banner resolve
+    const ban=$("#banner"),bw=$("#bwin");
+    if(t<SIM.CY_IG){ban.className="banner idle";bw.textContent="collecting bids…";}
+    else if(SIM.wmOn){ban.className="banner ok";bw.textContent="Cy — $150.00";}
+    else {ban.className="banner err";bw.textContent="Bo — $140.00";}
+    $("#clock").textContent="t = "+t.toFixed(1)+"s";
+    $("#scrub").value=Math.round((t/SIM.AXIS)*200);
+  }
+  let last=0;
+  function loop(ts){
+    if(!SIM.playing)return;
+    if(!last)last=ts;
+    const dt=(ts-last)/1000;last=ts;
+    SIM.t+=dt*SIM.SPEED;
+    if(SIM.t>=SIM.AXIS){SIM.t=SIM.AXIS;drawSim();stopSim();return;}
+    drawSim();SIM.raf=requestAnimationFrame(loop);
+  }
+  function playSim(){if(SIM.t>=SIM.AXIS)SIM.t=0;SIM.playing=true;last=0;setPlayBtn(true);SIM.raf=requestAnimationFrame(loop);}
+  function stopSim(){SIM.playing=false;setPlayBtn(false);if(SIM.raf)cancelAnimationFrame(SIM.raf);}
+  function setPlayBtn(p){const b=$("#playBtn");b.querySelector("span").textContent=p?"Pause":"Play";
+    b.querySelector("path").setAttribute("d",p?"M6 5h4v14H6zM14 5h4v14h-4z":"M8 5v14l11-7z");}
+  $("#playBtn").addEventListener("click",()=>SIM.playing?stopSim():playSim());
+  $("#wmBtn").addEventListener("click",()=>{
+    SIM.wmOn=!SIM.wmOn;const b=$("#wmBtn");
+    b.textContent="watermarking: "+(SIM.wmOn?"ON":"OFF");
+    b.className="btn toggle "+(SIM.wmOn?"on":"off");b.setAttribute("aria-pressed",SIM.wmOn);
+    drawSim();
+  });
+  $("#scrub").addEventListener("input",e=>{stopSim();SIM.t=(e.target.value/200)*SIM.AXIS;drawSim();});
+
+  /* ---------- 2. reconciliation matrix ---------- */
+  const ROW_EXPLAIN={
+    "42|0":"<strong>The hero.</strong> Cy's $150 bid (event-time 4s) arrives late at ingest ~11s. Naive processing-time windowing buckets it into [10–20s], so the [0–10s] Charizard final wrongly crowns <strong>Bo at $140</strong>. Event-time windowing assigns the bid by event-time and matches the oracle: <strong>Cy at $150</strong>.",
+    "42|10":"A phantom window. Naive windowing places Cy's late bid in [10–20s] — a window that should not exist for this auction. The event-time engine and the oracle have nothing here.",
+    "7|0":"<strong>Control.</strong> Show #7 has no late data, so all three pipelines agree (Em at $5.00). The gate does not 'fix' what isn't broken.",
+    "99|0":"<strong>Allowed-lateness drop.</strong> Hal's $90 bid (event-time 6s) arrives at ingest 24s, by which point the watermark has passed window_end + allowed_lateness (15s). The event-time engine drops it to a side output, so it shows Fi at $80 — diverging from the all-inclusive oracle (Hal at $90). Because show #99 dropped data, it is excluded from parity and reported as an SLO signal.",
+    "99|20":"Window [20–30s] for show #99. Gus's $200 bid is on-time in every pipeline; all three agree."
+  };
+  function cellWin(pair){return pair?`${pair[0]} <span class="cell-mut">${usd(pair[1])}</span>`:'<span class="cell-mut">—</span>';}
+  function renderMatrix(){
+    const tb=$("#matrixBody");tb.innerHTML="";
+    DATA.rows.forEach((r,i)=>{
+      const tr=document.createElement("tr");tr.tabIndex=0;tr.setAttribute("role","button");
+      tr.setAttribute("aria-selected",i===0?"true":"false");
+      const dropped=r.event===null&&r.batch===null; // phantom naive window
+      const isDiv=r.batch&&r.naive&&r.naive[0]!==r.batch[0];
+      const sloDrop=r.key.startsWith("99|0")&&r.event&&r.batch&&r.event[0]!==r.batch[0];
+      let tag;
+      if(r.key==="42|10") tag='<span class="tag drop">naive phantom</span>';
+      else if(sloDrop) tag='<span class="tag drop">SLO drop</span>';
+      else if(isDiv) tag='<span class="tag div">divergence</span>';
+      else tag='<span class="tag par">parity</span>';
+      const naiveCls = (isDiv||sloDrop)?"cell-bad":"";
+      tr.innerHTML=`<td class="win">${r.key}</td>
+        <td class="win ${naiveCls}">${cellWin(r.naive)}</td>
+        <td class="win ${r.event&&r.batch&&r.event[0]===r.batch[0]?'cell-good':''}">${cellWin(r.event)}</td>
+        <td class="win">${cellWin(r.batch)}</td>
+        <td>${tag}</td>`;
+      const sel=()=>{tb.querySelectorAll("tr").forEach(x=>x.setAttribute("aria-selected","false"));
+        tr.setAttribute("aria-selected","true");$("#reconcileExplain").innerHTML=ROW_EXPLAIN[r.key];};
+      tr.addEventListener("click",sel);
+      tr.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();sel();}});
+      tb.appendChild(tr);
+    });
+    $("#reconcileExplain").innerHTML=ROW_EXPLAIN["42|0"];
+  }
+
+  /* ---------- 3. SLO ---------- */
+  let curShow=42;
+  function renderShowSel(){
+    const c=$("#showSel");c.innerHTML="";
+    [42,7,99].forEach(s=>{
+      const b=document.createElement("button");b.className="chip";
+      b.setAttribute("aria-pressed",s===curShow);
+      const drop=DATA.metrics[s].dropped;
+      b.innerHTML=`show #${s}`+(drop?` <span class="warn">▲${drop}</span>`:"");
+      b.addEventListener("click",()=>{curShow=s;renderShowSel();renderTiles();});
+      c.appendChild(b);
+    });
+  }
+  function renderTiles(){
+    const m=DATA.metrics[curShow],t=$("#sloTiles");
+    const tiles=[
+      {l:"events",v:m.events,flag:false},
+      {l:"late (allowed)",v:m.late,flag:false},
+      {l:"dropped",v:m.dropped,flag:m.dropped>0},
+      {l:"watermark lag",v:m.lag.toFixed(1)+"s",flag:false}
+    ];
+    t.innerHTML="";
+    tiles.forEach(x=>{const d=document.createElement("div");d.className="tile"+(x.flag?" flag":"");
+      d.innerHTML=`<div class="t-lbl">${x.l}</div><div class="t-val">${x.v}</div>`;t.appendChild(d);});
+  }
+  function renderSloChart(){
+    const host=$("#sloChart");host.innerHTML="";
+    const shows=[42,7,99],max=4,W=host.clientWidth||420,H=150,pad=28,bw=46,gap=(W-2*pad-bw*3)/2;
+    const svg=svgEl("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img",
+      "aria-label":"Events processed: show 42 has 4, show 7 has 2, show 99 has 3."});
+    shows.forEach((s,i)=>{
+      const ev=DATA.metrics[s].events,bh=(ev/max)*(H-pad*2);
+      const x=pad+i*(bw+gap),y=H-pad-bh;
+      const drop=DATA.metrics[s].dropped>0;
+      svg.appendChild(svgEl("rect",{x,y,width:bw,height:bh,rx:5,
+        fill:drop?"#f59e0b":"#3b82f6",opacity:drop?".9":".85"}));
+      const tv=svgEl("text",{x:x+bw/2,y:y-7,"text-anchor":"middle",fill:"#e6edf3",
+        "font-family":"ui-monospace,Menlo,monospace","font-size":"12","font-weight":"600"});
+      tv.textContent=ev;svg.appendChild(tv);
+      const tl=svgEl("text",{x:x+bw/2,y:H-pad+15,"text-anchor":"middle",fill:"#65727f",
+        "font-family":"ui-monospace,Menlo,monospace","font-size":"10"});
+      tl.textContent="#"+s;svg.appendChild(tl);
+    });
+    host.appendChild(svg);
+  }
+
+  /* ---------- 4. recovery ---------- */
+  const REC_STEPS=[
+    {t:"Stream & checkpoint",d:"process 3 events → snapshot state + offset 3 + watermarks"},
+    {t:"Crash",d:"operator, state, source all lost mid-stream"},
+    {t:"Restore",d:"reload state, seek source to offset 3 (not 0)"},
+    {t:"Replay",d:"drain 6 remaining events into the idempotent sink"},
+    {t:"Reconcile",d:"recovered GMV == clean GMV  ✓  exactly-once"}
+  ];
+  function renderSteps(active){
+    const c=$("#recSteps");c.innerHTML="";
+    REC_STEPS.forEach((s,i)=>{
+      const d=document.createElement("div");
+      d.className="step"+(i===active?" active":i<active?" done":"");
+      d.innerHTML=`<span class="n">${i<active?"✓":i+1}</span><div><div class="s-t">${s.t}</div><div class="s-d">${s.d}</div></div>`;
+      c.appendChild(d);
+    });
+  }
+  let recTimer=null;
+  function playRec(){
+    if(recTimer)clearInterval(recTimer);
+    let i=0;renderSteps(0);
+    if(REDUCED){renderSteps(REC_STEPS.length);return;}
+    recTimer=setInterval(()=>{i++;if(i>=REC_STEPS.length){clearInterval(recTimer);renderSteps(REC_STEPS.length);return;}renderSteps(i);},850);
+  }
+  $("#recPlay").addEventListener("click",playRec);
+  function renderRecChart(){
+    const host=$("#recChart");host.innerHTML="";
+    const shows=[42,99,7],W=host.clientWidth||420,H=210,pad=30,bw=26,grp=70;
+    const maxc=56000;
+    const svg=svgEl("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",height:H,role:"img",
+      "aria-label":"GMV per show: exactly-once GMV equals the clean run; at-least-once doubles it."});
+    const x0=pad+8;
+    shows.forEach((s,i)=>{
+      const gx=x0+i*grp;
+      const eo=DATA.recovery.recovered[s], dbl=DATA.recovery.double[s];
+      [["#22c55e",eo,0],["#ef4444",dbl,bw+8]].forEach(([col,val,off])=>{
+        const bh=(val/maxc)*(H-pad*2),x=gx+off,y=H-pad-bh;
+        svg.appendChild(svgEl("rect",{x,y,width:bw,height:bh,rx:4,fill:col,opacity:".9"}));
+        const tv=svgEl("text",{x:x+bw/2,y:y-6,"text-anchor":"middle",fill:"#e6edf3",
+          "font-family":"ui-monospace,Menlo,monospace","font-size":"10"});
+        tv.textContent="$"+(val/100);svg.appendChild(tv);
+      });
+      const tl=svgEl("text",{x:gx+bw+4,y:H-pad+15,"text-anchor":"middle",fill:"#65727f",
+        "font-family":"ui-monospace,Menlo,monospace","font-size":"10"});
+      tl.textContent="#"+s;svg.appendChild(tl);
+    });
+    // legend
+    [["#22c55e","exactly-once (= clean)",0],["#ef4444","at-least-once (double)",172]].forEach(([c,t,ox])=>{
+      svg.appendChild(svgEl("rect",{x:x0+ox,y:8,width:10,height:10,rx:2,fill:c}));
+      const tx=svgEl("text",{x:x0+ox+15,y:17,fill:"#9aa7b4","font-family":"ui-monospace,Menlo,monospace","font-size":"9.5"});
+      tx.textContent=t;svg.appendChild(tx);
+    });
+    host.appendChild(svg);
+  }
+
+  /* ---------- init ---------- */
+  function init(){
+    renderStatus();
+    fit();SIM.t=SIM.AXIS;drawSim();          // default to the resolved board (winner visible)
+    renderMatrix();
+    renderShowSel();renderTiles();renderSloChart();
+    renderSteps(REDUCED?REC_STEPS.length:0);renderRecChart();
+    if("IntersectionObserver" in window && !REDUCED){
+      const io=new IntersectionObserver(es=>es.forEach(e=>{
+        if(e.isIntersecting && !SIM._played){SIM._played=true;playSim();}
+      }),{threshold:.45});
+      io.observe($("#gate"));
     }
   }
-
-  // 20 sim-seconds at SPEED=3 → 400 frames → ~6.67 real seconds
-  const TOTAL_FRAMES=Math.ceil(AXIS/SPEED*FPS);
-
-  function tick(){
-    resize();draw();frame++;
-    if(frame<=TOTAL_FRAMES){raf=requestAnimationFrame(tick);}
-    else{loopTimer=setTimeout(start,1500);} // auto-loop after 1.5s pause
-  }
-
-  function start(){
-    if(raf){cancelAnimationFrame(raf);raf=null;}
-    if(loopTimer){clearTimeout(loopTimer);loopTimer=null;}
-    frame=0;
-    setWinner("Charizard final — collecting bids…",null);
-    raf=requestAnimationFrame(tick);
-  }
-
-  btnWM.addEventListener("click",()=>{
-    wmOn=!wmOn;
-    btnWM.textContent="watermarking: "+(wmOn?"ON":"OFF");
-    btnWM.classList.toggle("on",wmOn);
-    start();
-  });
-  btnRP.addEventListener("click",start);
-  window.addEventListener("resize",()=>{resize();draw();});
-  resize();start();
+  let rsz=null;
+  window.addEventListener("resize",()=>{clearTimeout(rsz);rsz=setTimeout(()=>{fit();drawSim();renderSloChart();renderRecChart();},120);});
+  init();
 })();
 </script>
 </body>
