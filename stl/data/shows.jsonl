@@ -1,0 +1,9 @@
+{"show_id": 42, "type": "bid", "bidder_id": "Ana", "amount_cents": 10000, "event_time": 0.0, "ingest_time": 0.5}
+{"show_id": 42, "type": "bid", "bidder_id": "Bo", "amount_cents": 12000, "event_time": 2.0, "ingest_time": 2.5}
+{"show_id": 42, "type": "bid", "bidder_id": "Cy", "amount_cents": 15000, "event_time": 4.0, "ingest_time": 4.2}
+{"show_id": 42, "type": "bid", "bidder_id": "Bo", "amount_cents": 14000, "event_time": 5.0, "ingest_time": 5.5}
+{"show_id": 7, "type": "bid", "bidder_id": "Di", "amount_cents": 300, "event_time": 1.0, "ingest_time": 1.0}
+{"show_id": 7, "type": "bid", "bidder_id": "Em", "amount_cents": 500, "event_time": 3.0, "ingest_time": 3.0}
+{"show_id": 99, "type": "bid", "bidder_id": "Fi", "amount_cents": 8000, "event_time": 5.0, "ingest_time": 5.1}
+{"show_id": 99, "type": "bid", "bidder_id": "Gus", "amount_cents": 20000, "event_time": 22.0, "ingest_time": 22.3}
+{"show_id": 99, "type": "bid", "bidder_id": "Hal", "amount_cents": 9000, "event_time": 6.0, "ingest_time": 24.0}
