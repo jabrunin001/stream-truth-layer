@@ -17,3 +17,5 @@ def test_hero_event_time_matches_oracle_naive_does_not():
     assert div[K42]["oracle_winner"] == "Cy"
     # show 99 dropped a beyond-lateness bid -> reported as an SLO drop, not a parity failure
     assert any(d["show_id"] == 99 for d in r["late_drops"])
+    # guard: Show #42 must NOT be excluded from parity (else matches_oracle is vacuously True)
+    assert not any(d["show_id"] == 42 for d in r["late_drops"])
